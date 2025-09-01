@@ -4,7 +4,7 @@ import streamlit as st
 from io import BytesIO
 
 # ---- PAGE CONFIG ----
-st.set_page_config(page_title="♻ Material Dashboard", layout="wide")
+st.set_page_config(page_title="♻ Material Management Dashboard", layout="wide")
 
 # ---- READ EXCEL FILE ----
 excel_file_path = "Material incoming dashboard.xlsx"
@@ -22,7 +22,7 @@ with st.spinner("Loading data..."):
     outgoing_df["Ticket Date"] = pd.to_datetime(outgoing_df["Ticket Date"])
 
 # ---- DASHBOARD TITLE ----
-st.markdown("<h1 style='text-align: center;'>♻ Waste Management Dashboard</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>♻ Material Management Dashboard</h1>", unsafe_allow_html=True)
 st.divider()
 
 # ---- SIDEBAR FILTERS ----
@@ -237,7 +237,7 @@ st.divider()
 st.markdown(
     """
     <div style="text-align:center; padding: 10px; color: gray; font-size: 0.9em;">
-        ♻ Waste Management Dashboard | Built without breaking the monitor 😆
+        ♻ Material Management Dashboard | Built without breaking the monitor 😆
     </div>
     """,
     unsafe_allow_html=True
