@@ -4,7 +4,7 @@ import streamlit as st
 from io import BytesIO
 
 # ---- PAGE CONFIG ----
-st.set_page_config(page_title="♻ Waste Dashboard", layout="wide")
+st.set_page_config(page_title="♻ Material Dashboard", layout="wide")
 
 # ---- READ EXCEL FILE ----
 excel_file_path = "Material incoming dashboard.xlsx"
