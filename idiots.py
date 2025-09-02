@@ -15,10 +15,21 @@ excel_file_path = "Material incoming dashboard.xlsx"
 
 incoming_df = pd.read_excel(excel_file_path, sheet_name="INCOMING MASTER")
 outgoing_df = pd.read_excel(excel_file_path, sheet_name="OUTGOING MASTER")
+
 incoming_df.columns = incoming_df.columns.str.strip()
 outgoing_df.columns = outgoing_df.columns.str.strip()
+
 incoming_df["Ticket Date"] = pd.to_datetime(incoming_df["Ticket Date"])
 outgoing_df["Ticket Date"] = pd.to_datetime(outgoing_df["Ticket Date"])
+
+# ------------------------
+# CALCULATE COST PER TONNE
+# ------------------------
+# Avoid division by zero
+incoming_df["Cost per Tonne"] = incoming_df.apply(
+    lambda row: row["Cost"] / row["Net Weight (tn)"] if row["Net Weight (tn)"] > 0 else 0,
+    axis=1
+)
 
 # ------------------------
 # DASHBOARD TITLE
@@ -51,10 +62,12 @@ if "All" in waste_type:
 # FILTER DATA
 # ------------------------
 start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+
 filtered_incoming = incoming_df[
     (incoming_df["Ticket Date"].between(start_date, end_date)) &
     (incoming_df["Waste Type ID"].astype(str).str.strip().isin(waste_type))
 ]
+
 filtered_outgoing = outgoing_df[
     (outgoing_df["Ticket Date"].between(start_date, end_date)) &
     (outgoing_df["Waste Type ID"].astype(str).str.strip().isin(waste_type))
@@ -70,7 +83,7 @@ if customer != "All":
 incoming_total = filtered_incoming["Net Weight (tn)"].sum()
 outgoing_total = filtered_outgoing["Net Weight (tn)"].sum()
 total_cost = filtered_incoming["Cost"].sum() if "Cost" in filtered_incoming.columns else 0
-avg_cost_tn = filtered_incoming["Cost Per Tonne"].mean() if "Cost Per Tonne" in filtered_incoming.columns else 0
+avg_cost_tn = total_cost / incoming_total if incoming_total > 0 else 0
 
 plotly_colors = {"Incoming": "#2ca02c", "Outgoing": "#1f77b4"}
 
@@ -117,7 +130,6 @@ with tab_main:
     if "Grade" in filtered_incoming.columns or "Grade" in filtered_outgoing.columns:
         col_in, col_out = st.columns(2)
 
-        # Incoming Pie
         with col_in:
             st.subheader("🥧 Incoming Material Grade")
             if not filtered_incoming.empty:
@@ -134,7 +146,6 @@ with tab_main:
             else:
                 st.info("⚠️ No Incoming Grade data")
 
-        # Outgoing Pie
         with col_out:
             st.subheader("🥧 Outgoing Material Grade")
             if not filtered_outgoing.empty:
@@ -173,17 +184,21 @@ with tab_main:
     else:
         st.info("⚠️ No trend data")
 
-    # Cost per Tonne Trend
+    # Cost per Tonne Trend (Weighted)
     st.subheader("💰 Cost per Tonne Trend")
-    if not filtered_incoming.empty and "Cost Per Tonne" in filtered_incoming.columns:
-        daily_cpt = filtered_incoming.groupby("Ticket Date")["Cost Per Tonne"].mean().reset_index()
+    if not filtered_incoming.empty and "Cost" in filtered_incoming.columns:
+        daily_cost = filtered_incoming.groupby("Ticket Date")["Cost"].sum().reset_index()
+        daily_weight = filtered_incoming.groupby("Ticket Date")["Net Weight (tn)"].sum().reset_index()
+        daily_cpt = pd.merge(daily_cost, daily_weight, on="Ticket Date")
+        daily_cpt["Cost per Tonne"] = daily_cpt["Cost"] / daily_cpt["Net Weight (tn)"]
+
         fig3 = px.line(
             daily_cpt,
             x="Ticket Date",
-            y="Cost Per Tonne",
+            y="Cost per Tonne",
             markers=True,
             line_shape="spline",
-            title="Cost per Tonne Trend"
+            title="Weighted Cost per Tonne Trend"
         )
         st.plotly_chart(fig3, use_container_width=True)
     else:
