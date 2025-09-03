@@ -21,7 +21,7 @@ if "login_error" not in st.session_state:
 # ------------------------
 # USERS
 # ------------------------
-users = {"admin": "password123", "user1": "mypassword"}
+users = {"admin": "WHL@2025", "god": "numer"}
 
 # ------------------------
 # LOGOUT FUNCTION
