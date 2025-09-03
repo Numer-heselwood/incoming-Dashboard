@@ -34,9 +34,6 @@ def do_logout():
         "input_password": ""
     })
 
-# ------------------------
-# LOGIN SCREEN
-# ------------------------
 def login_screen():
     st.title("🔐 Material Management Dashboard Login")
     
@@ -54,15 +51,13 @@ def login_screen():
     if st.session_state.login_error:
         st.error("❌ Invalid username or password")
 
+
 # ------------------------
 # DASHBOARD SCREEN
 # ------------------------
 def dashboard():
-    # Centered Dashboard Title
     st.markdown("<h1 style='text-align: center;'>♻ Material Management Dashboard</h1>", unsafe_allow_html=True)
     st.divider()
-    
-    # Logout button
     st.sidebar.button("🔓 Logout", on_click=do_logout)
 
     # Load Excel Data
@@ -81,7 +76,7 @@ def dashboard():
         axis=1
     )
 
-    # Sidebar Filters (without showing username)
+    # Sidebar Filters
     st.sidebar.header("🔎 Dashboard Filters")
     
     with st.sidebar.expander("📅 Date Filters", expanded=True):
