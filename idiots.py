@@ -28,8 +28,8 @@ if "login_error" not in st.session_state:
 # and paste the result into this dict (or load from environment variables)
 
 users = {
-    "admin": b"$2a$12$G.Xo2QfXuKuD4lDw7NAS8eYkO7TsVK8KqSvVExjQDyDM/X7Ffv.ye",  # WHL@2025
-    "god": b"$2b$12$h2BaYifT0czBz1hlM8q25OPR1l7uQb0tqAhvH/jc5LDE2o5MQl6d6",   # numer
+    "admin": b"$2a$12$G.Xo2QfXuKuD4lDw7NAS8eYkO7TsVK8KqSvVExjQDyDM/X7Ffv.ye",
+    "god": b"$2a$12$AEYFYkOQ6eAbsBOkU6CLXukYPNrVGxlHPMF795HmBfVTIOiWHSeYK",  
 }
 
 def check_password(username, password):
