@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from io import BytesIO
+import bcrypt
 
 # ------------------------
 # PAGE CONFIG
@@ -19,9 +20,13 @@ if "login_error" not in st.session_state:
     st.session_state.login_error = False
 
 # ------------------------
-# USERS
+# USERS (bcrypt hashed passwords)
 # ------------------------
-users = {"admin": "WHL@2025", "god": "numer"}
+# Generate your own hashes with bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+users = {
+    "admin": b"$2a$12$Ppl5mnE7enzQP5bO79aXlOFOfvgVeHyfKd4t.YcrF1nVMmOuapBAG",
+    "god": b"$2a$12$GbfJNu.gRCLuQvaioMQQcOObBZYRQ28IFSUQeu79joJJWUjw1wXKm"
+}
 
 # ------------------------
 # LOGOUT FUNCTION
@@ -34,6 +39,17 @@ def do_logout():
         "input_password": ""
     })
 
+# ------------------------
+# PASSWORD CHECK FUNCTION
+# ------------------------
+def check_password(username, password):
+    if username in users:
+        return bcrypt.checkpw(password.encode(), users[username])
+    return False
+
+# ------------------------
+# LOGIN SCREEN
+# ------------------------
 def login_screen():
     st.title("🔐 Material Management Dashboard Login")
     
@@ -41,7 +57,7 @@ def login_screen():
     password = st.text_input("Password", type="password", key="input_password")
     
     if st.button("Login"):
-        if username in users and password == users[username]:
+        if check_password(username, password):
             st.session_state.logged_in = True
             st.session_state.username = username
             st.session_state.login_error = False
@@ -50,7 +66,6 @@ def login_screen():
 
     if st.session_state.login_error:
         st.error("❌ Invalid username or password")
-
 
 # ------------------------
 # DASHBOARD SCREEN
