@@ -123,6 +123,9 @@ def dashboard():
         waste_type = st.multiselect("Select Waste Type", options=["All"] + list(waste_type_options), default=["All"])
         if "All" in waste_type:
             waste_type = waste_type_options
+        
+        # New filter: Priced vs Not Priced
+        price_filter = st.radio("Price Filter", options=["All", "Priced", "Not Priced"], index=0)
         st.markdown('</div>', unsafe_allow_html=True)
 
     # Mobile filters (expander)
@@ -140,6 +143,9 @@ def dashboard():
         waste_type = st.multiselect("Select Waste Type", options=["All"] + list(waste_type_options), default=["All"], key="mobile_waste")
         if "All" in waste_type:
             waste_type = waste_type_options
+        
+        # New filter for mobile
+        price_filter = st.radio("Price Filter", options=["All", "Priced", "Not Priced"], index=0, key="mobile_price")
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ------------------------
@@ -159,6 +165,12 @@ def dashboard():
     if customer != "All":
         filtered_incoming = filtered_incoming[filtered_incoming["Customer Name"] == customer]
         filtered_outgoing = filtered_outgoing[filtered_outgoing["Customer Name"] == customer]
+
+    # Apply price filter
+    if price_filter == "Priced":
+        filtered_incoming = filtered_incoming[filtered_incoming["Cost"] > 0]
+    elif price_filter == "Not Priced":
+        filtered_incoming = filtered_incoming[(filtered_incoming["Cost"] == 0) | (filtered_incoming["Cost"].isna())]
 
     # ------------------------
     # KPIs
