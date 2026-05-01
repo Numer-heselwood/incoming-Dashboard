@@ -81,6 +81,13 @@ def load_data():
     incoming.columns = incoming.columns.str.strip()
     outgoing.columns = outgoing.columns.str.strip()
 
+    # ✅ FORCE DATE PARSING (UK SAFE)
+    if IN_COLS["ticket_date"] in incoming.columns:
+        incoming[IN_COLS["ticket_date"]] = pd.to_datetime(incoming[IN_COLS["ticket_date"]], dayfirst=True, errors="coerce")
+
+    if OUT_COLS["ticket_date"] in outgoing.columns:
+        outgoing[OUT_COLS["ticket_date"]] = pd.to_datetime(outgoing[OUT_COLS["ticket_date"]], dayfirst=True, errors="coerce")
+
     return incoming, outgoing
 
 # ==================================================
@@ -95,7 +102,6 @@ def incoming_view(incoming):
     supplier_col = col_exists(incoming, IN_COLS["supplier"])
     date_col = col_exists(incoming, IN_COLS["ticket_date"])
 
-    # FILTERS
     selected_waste = st.sidebar.multiselect(
         "Waste Type",
         sorted(incoming[waste_col].dropna().astype(str).unique()) if waste_col else []
@@ -106,14 +112,20 @@ def incoming_view(incoming):
         sorted(incoming[supplier_col].dropna().astype(str).unique()) if supplier_col else []
     )
 
-    date_range = None
+    # ✅ BETTER DATE PICKER
     if date_col:
+        min_date = incoming[date_col].min()
+        max_date = incoming[date_col].max()
+
         date_range = st.sidebar.date_input(
             "Date Range",
-            [incoming[date_col].min(), incoming[date_col].max()]
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date
         )
+    else:
+        date_range = None
 
-    # APPLY FILTERS (INDEPENDENT)
     fi = incoming.copy()
 
     if selected_waste:
@@ -134,7 +146,10 @@ def incoming_view(incoming):
         weight = pd.to_numeric(fi[IN_COLS["weight"]], errors="coerce")
         fi["Cost / Tonne"] = (cost / weight).round(2)
 
-    # DISPLAY COLUMNS
+    # ✅ UK DATE FORMAT DISPLAY
+    if date_col in fi.columns:
+        fi[date_col] = fi[date_col].dt.strftime("%d/%m/%Y")
+
     display_cols = [
         IN_COLS["ticket_id"],
         IN_COLS["ticket_date"],
@@ -151,7 +166,7 @@ def incoming_view(incoming):
     ]
     display_cols = [c for c in display_cols if c in fi.columns]
 
-    # 🔍 SEARCH FIRST
+    # SEARCH
     st.subheader("🎯 Ticket Lookup")
     ticket = st.text_input("Enter Ticket ID")
 
@@ -163,15 +178,10 @@ def incoming_view(incoming):
             if df.empty:
                 st.warning("No records found")
             else:
-                cost = pd.to_numeric(df[IN_COLS["cost"]], errors="coerce")
-                weight = pd.to_numeric(df[IN_COLS["weight"]], errors="coerce")
-                df["Cost / Tonne"] = (cost / weight).round(2)
-
                 st.dataframe(df[display_cols], use_container_width=True)
         except:
             st.error("Enter a valid number")
 
-    # 🔽 TABLE AFTER
     st.subheader("📊 Filtered Data")
     st.dataframe(fi[display_cols], use_container_width=True)
 
@@ -197,12 +207,18 @@ def outgoing_view(outgoing):
         sorted(outgoing[customer_col].dropna().astype(str).unique()) if customer_col else []
     )
 
-    date_range = None
     if date_col:
+        min_date = outgoing[date_col].min()
+        max_date = outgoing[date_col].max()
+
         date_range = st.sidebar.date_input(
             "Date Range",
-            [outgoing[date_col].min(), outgoing[date_col].max()]
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date
         )
+    else:
+        date_range = None
 
     fo = outgoing.copy()
 
@@ -218,6 +234,9 @@ def outgoing_view(outgoing):
             (fo[date_col] <= pd.to_datetime(date_range[1]))
         ]
 
+    if date_col in fo.columns:
+        fo[date_col] = fo[date_col].dt.strftime("%d/%m/%Y")
+
     display_cols = [
         OUT_COLS["ticket_id"],
         OUT_COLS["ticket_date"],
@@ -232,7 +251,6 @@ def outgoing_view(outgoing):
     ]
     display_cols = [c for c in display_cols if c in fo.columns]
 
-    # 🔍 SEARCH FIRST
     st.subheader("🎯 Ticket Lookup")
     ticket = st.text_input("Enter Ticket ID", key="out_ticket")
 
@@ -248,7 +266,6 @@ def outgoing_view(outgoing):
         except:
             st.error("Enter a valid number")
 
-    # 🔽 TABLE AFTER
     st.subheader("📊 Filtered Data")
     st.dataframe(fo[display_cols], use_container_width=True)
 
