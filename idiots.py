@@ -1,228 +1,276 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from io import BytesIO
 import hashlib
 
 # ==================================================
-# PAGE CONFIG
+# CONFIG
 # ==================================================
-st.set_page_config(
-    page_title="♻ Material Management Dashboard",
-    layout="wide"
-)
+st.set_page_config(page_title="♻ Material Dashboard", layout="wide")
+
+FILE_PATH = "Daily Report_WHL NUMER New.xlsm"
+
+INCOMING_SHEET = "Incoming - Feb. Onwards+unpaid"
+OUTGOING_SHEET = "Outgoing - Feb'25 onwards"
 
 # ==================================================
-# LOGIN SETUP
+# HELPERS
 # ==================================================
-def hash_pw(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+def col_exists(df, col):
+    return col if col in df.columns else None
 
-USERS = {
-    "admin": hash_pw("admin123"),
-    "god": hash_pw("god123")
+def hash_pw(p): 
+    return hashlib.sha256(p.encode()).hexdigest()
+
+# ==================================================
+# COLUMN MAPS
+# ==================================================
+IN_COLS = {
+    "ticket_id": "Ticket ID",
+    "ticket_date": "Ticket Date",
+    "paid_date": "Paid Date",
+    "mpn_date": "MPN Document Date",
+    "waste_type": "Waste Type ID",
+    "weight": "Net WeightMT",
+    "first_weight": "First Weight",
+    "second_weight": "Second Weight",
+    "cost": "Cost",
+    "supplier": "Supplier Name",
+    "comments": "Comments"
 }
+
+OUT_COLS = {
+    "ticket_id": "Ticket ID",
+    "ticket_date": "Ticket Date",
+    "waste_type": "Waste Type ID",
+    "weight": "Net Weight MT",
+    "first_weight": "First Weight",
+    "second_weight": "Second Weight",
+    "price_mt": "Price/MT",
+    "total_price": "Total Price",
+    "customer": "Customer Name",
+    "comments": "Comments"
+}
+
+# ==================================================
+# LOGIN
+# ==================================================
+USERS = {"admin": hash_pw("admin123")}
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
-if "username" not in st.session_state:
-    st.session_state.username = ""
 
-def login_screen():
-    st.title("🔐 Material Management Dashboard Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    if st.button("Login", use_container_width=True):
-        if username in USERS and USERS[username] == hash_pw(password):
+def login():
+    st.title("🔐 Login")
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if u in USERS and USERS[u] == hash_pw(p):
             st.session_state.logged_in = True
-            st.session_state.username = username
         else:
-            st.error("❌ Invalid username or password")
-
-def logout():
-    st.session_state.logged_in = False
-    st.session_state.username = ""
+            st.error("Invalid login")
 
 # ==================================================
-# DASHBOARD
+# LOAD DATA
 # ==================================================
-def dashboard():
-    st.sidebar.button("🔓 Logout", on_click=logout)
-    st.markdown("<h1 style='text-align:center;'>♻ Material Management Dashboard</h1>", unsafe_allow_html=True)
-    st.divider()
-
-    # ----------------------
-    # LOAD DATA
-    # ----------------------
-    FILE_PATH = "Material incoming dashboard.xlsx"
-    try:
-        incoming = pd.read_excel(FILE_PATH, sheet_name="INCOMING MASTER")
-        outgoing = pd.read_excel(FILE_PATH, sheet_name="OUTGOING MASTER")
-    except Exception as e:
-        st.error(f"❌ Failed to load Excel: {e}")
-        st.stop()
+@st.cache_data
+def load_data():
+    incoming = pd.read_excel(FILE_PATH, sheet_name=INCOMING_SHEET, engine="openpyxl")
+    outgoing = pd.read_excel(FILE_PATH, sheet_name=OUTGOING_SHEET, engine="openpyxl")
 
     incoming.columns = incoming.columns.str.strip()
     outgoing.columns = outgoing.columns.str.strip()
-    incoming["Ticket Date"] = pd.to_datetime(incoming["Ticket Date"], errors="coerce")
-    outgoing["Ticket Date"] = pd.to_datetime(outgoing["Ticket Date"], errors="coerce")
-    incoming = incoming.dropna(subset=["Ticket Date"])
-    outgoing = outgoing.dropna(subset=["Ticket Date"])
 
-    # ----------------------
-    # FILTERS
-    # ----------------------
-    with st.sidebar:
-        st.header("🔎 Dashboard Filters")
-        min_date = incoming["Ticket Date"].min().date()
-        max_date = incoming["Ticket Date"].max().date()
-        date_range = st.date_input("Date Range", (min_date, max_date))
-        customer = st.selectbox("Customer", ["All"] + sorted(incoming["Customer Name"].dropna().unique()))
-        waste_types = incoming["Waste Type ID"].astype(str).str.strip().unique().tolist()
-        waste_type = st.multiselect("Waste Type", options=["All"] + sorted(waste_types), default=["All"])
-        if "All" in waste_type:
-            waste_type = waste_types
-        price_filter = st.radio("Price Filter", ["All", "Priced", "Not Priced"])
-
-    start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-
-    # ----------------------
-    # APPLY FILTERS
-    # ----------------------
-    fi = incoming[(incoming["Ticket Date"].between(start_date, end_date)) &
-                  (incoming["Waste Type ID"].astype(str).str.strip().isin(waste_type))]
-    fo = outgoing[(outgoing["Ticket Date"].between(start_date, end_date)) &
-                  (outgoing["Waste Type ID"].astype(str).str.strip().isin(waste_type))]
-    if customer != "All":
-        fi = fi[fi["Customer Name"] == customer]
-        fo = fo[fo["Customer Name"] == customer]
-    if price_filter == "Priced":
-        fi = fi[fi["Cost"] > 0]
-    elif price_filter == "Not Priced":
-        fi = fi[(fi["Cost"].isna()) | (fi["Cost"] == 0)]
-
-    # ----------------------
-    # KPIs
-    # ----------------------
-    incoming_tn = fi["Net Weight (tn)"].sum()
-    outgoing_tn = fo["Net Weight (tn)"].sum()
-    total_cost = fi["Cost"].sum()
-    weighted_avg = total_cost / incoming_tn if incoming_tn > 0 else 0
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("⬅️ Incoming (tn)", f"{incoming_tn:,.2f}")
-    c2.metric("➡️ Outgoing (tn)", f"{outgoing_tn:,.2f}")
-    c3.metric("💰 Total Cost (£)", f"{total_cost:,.2f}")
-    c4.metric("⚖️ Weighted Avg £ / tonne", f"{weighted_avg:,.2f}")
-    st.divider()
-
-    # ----------------------
-    # TABS
-    # ----------------------
-    tab_overview, tab_data, tab_download, tab_supplier = st.tabs(
-        ["📊 Overview", "📋 Data Tables", "⬇ Download", "🏭 Supplier Trend"]
-    )
-
-    # ----------------------
-    # OVERVIEW TAB
-    # ----------------------
-    with tab_overview:
-        with st.expander("📦 Net Weight by Waste Type", expanded=False):
-            w_in = fi.groupby("Waste Type ID")["Net Weight (tn)"].sum().reset_index()
-            w_in["Type"] = "Incoming"
-            w_out = fo.groupby("Waste Type ID")["Net Weight (tn)"].sum().reset_index()
-            w_out["Type"] = "Outgoing"
-            combined = pd.concat([w_in, w_out])
-            if not combined.empty:
-                st.plotly_chart(px.bar(combined, x="Waste Type ID", y="Net Weight (tn)", color="Type", barmode="group"),
-                                use_container_width=True)
-            else:
-                st.info("No data available.")
-
-        with st.expander("🥧 Material Grade Distribution", expanded=False):
-            if "Grade" in fi.columns and not fi.empty:
-                grade_df = fi.groupby("Grade")["Net Weight (tn)"].sum().reset_index()
-                st.plotly_chart(px.pie(grade_df, names="Grade", values="Net Weight (tn)"), use_container_width=True)
-
-        with st.expander("📈 Incoming vs Outgoing Trend", expanded=False):
-            t_in = fi.groupby("Ticket Date")["Net Weight (tn)"].sum().reset_index()
-            t_in["Type"] = "Incoming"
-            t_out = fo.groupby("Ticket Date")["Net Weight (tn)"].sum().reset_index()
-            t_out["Type"] = "Outgoing"
-            trend = pd.concat([t_in, t_out])
-            if not trend.empty:
-                st.plotly_chart(px.line(trend, x="Ticket Date", y="Net Weight (tn)", color="Type", markers=True),
-                                use_container_width=True)
-
-        with st.expander("💰 Cost per Tonne Trend", expanded=False):
-            daily_cost = fi.groupby("Ticket Date")["Cost"].sum().reset_index()
-            daily_weight = fi.groupby("Ticket Date")["Net Weight (tn)"].sum().reset_index()
-            cpt = pd.merge(daily_cost, daily_weight, on="Ticket Date")
-            cpt["Cost per Tonne"] = cpt["Cost"] / cpt["Net Weight (tn)"]
-            if not cpt.empty:
-                st.plotly_chart(px.line(cpt, x="Ticket Date", y="Cost per Tonne", markers=True),
-                                use_container_width=True)
-
-    # ----------------------
-    # DATA TAB
-    # ----------------------
-    with tab_data:
-        st.subheader("Incoming Data")
-        st.dataframe(fi, use_container_width=True)
-        st.subheader("Outgoing Data")
-        st.dataframe(fo, use_container_width=True)
-
-    # ----------------------
-    # DOWNLOAD TAB
-    # ----------------------
-    with tab_download:
-        buffer = BytesIO()
-        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            fi.to_excel(writer, index=False, sheet_name="Incoming")
-            fo.to_excel(writer, index=False, sheet_name="Outgoing")
-        st.download_button("📥 Download Excel Report", buffer.getvalue(),
-                           file_name="Material_Report.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-    # ----------------------
-    # SUPPLIER TREND TAB
-    # ----------------------
-    with tab_supplier:
-        st.header("🏭 Top Suppliers (Incoming)")
-        supplier_col = "Customer Name"
-        if supplier_col not in fi.columns or fi.empty:
-            st.info("⚠️ No data available for the selected filters or supplier")
-        else:
-            supplier_summary = fi.groupby(supplier_col)["Net Weight (tn)"].sum().reset_index()
-            supplier_summary = supplier_summary.sort_values("Net Weight (tn)", ascending=False).head(5)
-            max_weight = supplier_summary["Net Weight (tn)"].max()
-
-            # Display Top 5 suppliers with bar indicators
-            for idx, row in supplier_summary.iterrows():
-                col1, col2, col3 = st.columns([2, 5, 1])
-                col1.write(row[supplier_col])
-                bar_len = int((row["Net Weight (tn)"] / max_weight) * 300)
-                col2.markdown(f"<div style='background-color:#2ca02c; width:{bar_len}px; height:20px;'>&nbsp;</div>", unsafe_allow_html=True)
-                col3.write(f"{row['Net Weight (tn)']:.2f} tn")
-
-            st.markdown("---")
-            st.subheader("📅 Monthly Breakdown by Supplier")
-            selected_supplier = st.selectbox("Select Supplier", options=list(supplier_summary[supplier_col]))
-            monthly_data = fi[fi[supplier_col] == selected_supplier].copy()
-            monthly_data['Month'] = monthly_data['Ticket Date'].dt.to_period('M').astype(str)
-            monthly_summary = monthly_data.groupby('Month')['Net Weight (tn)'].sum().reset_index()
-            monthly_max = monthly_summary['Net Weight (tn)'].max()
-            for idx, row in monthly_summary.iterrows():
-                col1, col2, col3 = st.columns([2, 5, 1])
-                col1.write(row['Month'])
-                bar_len = int((row['Net Weight (tn)'] / monthly_max) * 300)
-                col2.markdown(f"<div style='background-color:#1f77b4; width:{bar_len}px; height:20px;'>&nbsp;</div>", unsafe_allow_html=True)
-                col3.write(f"{row['Net Weight (tn)']:.2f} tn")
+    return incoming, outgoing
 
 # ==================================================
-# APP ENTRY
+# INCOMING VIEW
+# ==================================================
+def incoming_view(incoming):
+    st.title("📥 Incoming")
+
+    st.sidebar.header("Filters (Incoming)")
+
+    waste_col = col_exists(incoming, IN_COLS["waste_type"])
+    supplier_col = col_exists(incoming, IN_COLS["supplier"])
+    date_col = col_exists(incoming, IN_COLS["ticket_date"])
+
+    # FILTERS
+    selected_waste = st.sidebar.multiselect(
+        "Waste Type",
+        sorted(incoming[waste_col].dropna().astype(str).unique()) if waste_col else []
+    )
+
+    selected_supplier = st.sidebar.multiselect(
+        "Supplier",
+        sorted(incoming[supplier_col].dropna().astype(str).unique()) if supplier_col else []
+    )
+
+    date_range = None
+    if date_col:
+        date_range = st.sidebar.date_input(
+            "Date Range",
+            [incoming[date_col].min(), incoming[date_col].max()]
+        )
+
+    # APPLY FILTERS (INDEPENDENT)
+    fi = incoming.copy()
+
+    if selected_waste:
+        fi = fi[fi[waste_col].astype(str).isin(selected_waste)]
+
+    if selected_supplier:
+        fi = fi[fi[supplier_col].astype(str).isin(selected_supplier)]
+
+    if date_range and len(date_range) == 2:
+        fi = fi[
+            (fi[date_col] >= pd.to_datetime(date_range[0])) &
+            (fi[date_col] <= pd.to_datetime(date_range[1]))
+        ]
+
+    # SAFE CALC
+    if IN_COLS["cost"] in fi.columns and IN_COLS["weight"] in fi.columns:
+        cost = pd.to_numeric(fi[IN_COLS["cost"]], errors="coerce")
+        weight = pd.to_numeric(fi[IN_COLS["weight"]], errors="coerce")
+        fi["Cost / Tonne"] = (cost / weight).round(2)
+
+    # DISPLAY COLUMNS
+    display_cols = [
+        IN_COLS["ticket_id"],
+        IN_COLS["ticket_date"],
+        IN_COLS["waste_type"],
+        IN_COLS["weight"],
+        IN_COLS["first_weight"],
+        IN_COLS["second_weight"],
+        "Cost / Tonne",
+        IN_COLS["cost"],
+        IN_COLS["supplier"],
+        IN_COLS["paid_date"],
+        IN_COLS["mpn_date"],
+        IN_COLS["comments"]
+    ]
+    display_cols = [c for c in display_cols if c in fi.columns]
+
+    # 🔍 SEARCH FIRST
+    st.subheader("🎯 Ticket Lookup")
+    ticket = st.text_input("Enter Ticket ID")
+
+    if ticket:
+        try:
+            t = int(ticket)
+            df = incoming[incoming[IN_COLS["ticket_id"]] == t].copy()
+
+            if df.empty:
+                st.warning("No records found")
+            else:
+                cost = pd.to_numeric(df[IN_COLS["cost"]], errors="coerce")
+                weight = pd.to_numeric(df[IN_COLS["weight"]], errors="coerce")
+                df["Cost / Tonne"] = (cost / weight).round(2)
+
+                st.dataframe(df[display_cols], use_container_width=True)
+        except:
+            st.error("Enter a valid number")
+
+    # 🔽 TABLE AFTER
+    st.subheader("📊 Filtered Data")
+    st.dataframe(fi[display_cols], use_container_width=True)
+
+# ==================================================
+# OUTGOING VIEW
+# ==================================================
+def outgoing_view(outgoing):
+    st.title("📤 Outgoing")
+
+    st.sidebar.header("Filters (Outgoing)")
+
+    waste_col = col_exists(outgoing, OUT_COLS["waste_type"])
+    customer_col = col_exists(outgoing, OUT_COLS["customer"])
+    date_col = col_exists(outgoing, OUT_COLS["ticket_date"])
+
+    selected_waste = st.sidebar.multiselect(
+        "Waste Type",
+        sorted(outgoing[waste_col].dropna().astype(str).unique()) if waste_col else []
+    )
+
+    selected_customer = st.sidebar.multiselect(
+        "Customer",
+        sorted(outgoing[customer_col].dropna().astype(str).unique()) if customer_col else []
+    )
+
+    date_range = None
+    if date_col:
+        date_range = st.sidebar.date_input(
+            "Date Range",
+            [outgoing[date_col].min(), outgoing[date_col].max()]
+        )
+
+    fo = outgoing.copy()
+
+    if selected_waste:
+        fo = fo[fo[waste_col].astype(str).isin(selected_waste)]
+
+    if selected_customer:
+        fo = fo[fo[customer_col].astype(str).isin(selected_customer)]
+
+    if date_range and len(date_range) == 2:
+        fo = fo[
+            (fo[date_col] >= pd.to_datetime(date_range[0])) &
+            (fo[date_col] <= pd.to_datetime(date_range[1]))
+        ]
+
+    display_cols = [
+        OUT_COLS["ticket_id"],
+        OUT_COLS["ticket_date"],
+        OUT_COLS["waste_type"],
+        OUT_COLS["weight"],
+        OUT_COLS["first_weight"],
+        OUT_COLS["second_weight"],
+        OUT_COLS["price_mt"],
+        OUT_COLS["total_price"],
+        OUT_COLS["customer"],
+        OUT_COLS["comments"]
+    ]
+    display_cols = [c for c in display_cols if c in fo.columns]
+
+    # 🔍 SEARCH FIRST
+    st.subheader("🎯 Ticket Lookup")
+    ticket = st.text_input("Enter Ticket ID", key="out_ticket")
+
+    if ticket:
+        try:
+            t = int(ticket)
+            df = outgoing[outgoing[OUT_COLS["ticket_id"]] == t]
+
+            if df.empty:
+                st.warning("No records found")
+            else:
+                st.dataframe(df[display_cols], use_container_width=True)
+        except:
+            st.error("Enter a valid number")
+
+    # 🔽 TABLE AFTER
+    st.subheader("📊 Filtered Data")
+    st.dataframe(fo[display_cols], use_container_width=True)
+
+# ==================================================
+# MAIN
+# ==================================================
+def dashboard():
+    incoming, outgoing = load_data()
+
+    view = st.radio("Select View", ["Incoming", "Outgoing"], horizontal=True)
+
+    st.sidebar.empty()
+
+    if view == "Incoming":
+        incoming_view(incoming)
+    else:
+        outgoing_view(outgoing)
+
+# ==================================================
+# RUN
 # ==================================================
 if st.session_state.logged_in:
     dashboard()
 else:
-    login_screen()
+    login()
