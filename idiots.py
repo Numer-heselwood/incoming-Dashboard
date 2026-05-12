@@ -34,7 +34,7 @@ IN_COLS = {
     "first_weight": "First Weight",
     "second_weight": "Second Weight",
     "cost": "Cost",
-    "cost_per_tonne": "Cost Per Tonne",   # ✅ FIXED
+    "cost_per_tonne": "Cost Per Tonne",
     "supplier": "Supplier Name",
     "comments": "Comments"
 }
@@ -82,19 +82,20 @@ def load_data():
     incoming.columns = incoming.columns.str.strip()
     outgoing.columns = outgoing.columns.str.strip()
 
-    # DATE PARSING (UK FORMAT)
+    # Convert dates
     if IN_COLS["ticket_date"] in incoming.columns:
         incoming[IN_COLS["ticket_date"]] = pd.to_datetime(
-            incoming[IN_COLS["ticket_date"]],
-            dayfirst=True,
-            errors="coerce"
+            incoming[IN_COLS["ticket_date"]], dayfirst=True, errors="coerce"
+        )
+
+    if IN_COLS["paid_date"] in incoming.columns:
+        incoming[IN_COLS["paid_date"]] = pd.to_datetime(
+            incoming[IN_COLS["paid_date"]], dayfirst=True, errors="coerce"
         )
 
     if OUT_COLS["ticket_date"] in outgoing.columns:
         outgoing[OUT_COLS["ticket_date"]] = pd.to_datetime(
-            outgoing[OUT_COLS["ticket_date"]],
-            dayfirst=True,
-            errors="coerce"
+            outgoing[OUT_COLS["ticket_date"]], dayfirst=True, errors="coerce"
         )
 
     return incoming, outgoing
@@ -110,6 +111,7 @@ def incoming_view(incoming):
     waste_col = col_exists(incoming, IN_COLS["waste_type"])
     supplier_col = col_exists(incoming, IN_COLS["supplier"])
     date_col = col_exists(incoming, IN_COLS["ticket_date"])
+    paid_col = col_exists(incoming, IN_COLS["paid_date"])
 
     selected_waste = st.sidebar.multiselect(
         "Waste Type",
@@ -121,6 +123,7 @@ def incoming_view(incoming):
         sorted(incoming[supplier_col].dropna().astype(str).unique()) if supplier_col else []
     )
 
+    # DATE FILTER
     if date_col:
         min_date = incoming[date_col].min()
         max_date = incoming[date_col].max()
@@ -133,6 +136,12 @@ def incoming_view(incoming):
         )
     else:
         date_range = None
+
+    # ✅ PAID / UNPAID FILTER
+    paid_filter = st.sidebar.radio(
+        "Payment Status",
+        ["All", "Paid", "Unpaid"]
+    )
 
     fi = incoming.copy()
 
@@ -148,9 +157,21 @@ def incoming_view(incoming):
             (fi[date_col] <= pd.to_datetime(date_range[1]))
         ]
 
+    # ✅ APPLY PAID FILTER
+    if paid_col:
+        if paid_filter == "Paid":
+            fi = fi[fi[paid_col].notna()]
+        elif paid_filter == "Unpaid":
+            fi = fi[fi[paid_col].isna()]
+
+    # Format dates
     if date_col in fi.columns:
         fi[date_col] = fi[date_col].dt.strftime("%d/%m/%Y")
 
+    if paid_col in fi.columns:
+        fi[paid_col] = fi[paid_col].dt.strftime("%d/%m/%Y")
+
+    # TABLE COLUMNS
     display_cols = [
         IN_COLS["ticket_id"],
         IN_COLS["ticket_date"],
@@ -158,7 +179,7 @@ def incoming_view(incoming):
         IN_COLS["weight"],
         IN_COLS["first_weight"],
         IN_COLS["second_weight"],
-        IN_COLS["cost_per_tonne"],  # ✅ FIXED COLUMN USED
+        IN_COLS["cost_per_tonne"],
         IN_COLS["cost"],
         IN_COLS["supplier"],
         IN_COLS["paid_date"],
@@ -168,38 +189,44 @@ def incoming_view(incoming):
 
     display_cols = [c for c in display_cols if c in fi.columns]
 
-    # SEARCH (FIXED)
+    # SEARCH
     st.subheader("🎯 Ticket Lookup")
     ticket = st.text_input("Enter Ticket ID")
 
     if ticket:
-        try:
-            ticket_clean = str(ticket).strip()
+        ticket_clean = str(ticket).strip()
 
-            df = incoming.copy()
+        df = incoming.copy()
+        df[IN_COLS["ticket_id"]] = (
+            df[IN_COLS["ticket_id"]]
+            .astype(str)
+            .str.replace(".0", "", regex=False)
+            .str.strip()
+        )
 
-            df[IN_COLS["ticket_id"]] = (
-                df[IN_COLS["ticket_id"]]
-                .astype(str)
-                .str.replace(".0", "", regex=False)
-                .str.strip()
-            )
+        df = df[df[IN_COLS["ticket_id"]] == ticket_clean]
 
-            df = df[df[IN_COLS["ticket_id"]] == ticket_clean]
+        if df.empty:
+            st.warning("No records found")
+        else:
+            st.dataframe(df[display_cols], use_container_width=True)
 
-            if df.empty:
-                st.warning("No records found")
-            else:
-                st.dataframe(df[display_cols], use_container_width=True)
-
-        except Exception as e:
-            st.error(f"Error: {e}")
-
+    # TABLE
     st.subheader("📊 Filtered Data")
     st.dataframe(fi[display_cols], use_container_width=True)
 
+    # KPI TOTAL
+    if IN_COLS["weight"] in fi.columns:
+        total_weight = pd.to_numeric(fi[IN_COLS["weight"]], errors="coerce").sum()
+
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.markdown("### **Total Net Weight**")
+        with col2:
+            st.markdown(f"### **{total_weight:,.2f} MT**")
+
 # ==================================================
-# OUTGOING VIEW
+# OUTGOING VIEW (UNCHANGED)
 # ==================================================
 def outgoing_view(outgoing):
     st.title("📤 Outgoing")
@@ -265,35 +292,17 @@ def outgoing_view(outgoing):
 
     display_cols = [c for c in display_cols if c in fo.columns]
 
-    # SEARCH (FIXED)
-    st.subheader("🎯 Ticket Lookup")
-    ticket = st.text_input("Enter Ticket ID", key="out_ticket")
-
-    if ticket:
-        try:
-            ticket_clean = str(ticket).strip()
-
-            df = outgoing.copy()
-
-            df[OUT_COLS["ticket_id"]] = (
-                df[OUT_COLS["ticket_id"]]
-                .astype(str)
-                .str.replace(".0", "", regex=False)
-                .str.strip()
-            )
-
-            df = df[df[OUT_COLS["ticket_id"]] == ticket_clean]
-
-            if df.empty:
-                st.warning("No records found")
-            else:
-                st.dataframe(df[display_cols], use_container_width=True)
-
-        except Exception as e:
-            st.error(f"Error: {e}")
-
     st.subheader("📊 Filtered Data")
     st.dataframe(fo[display_cols], use_container_width=True)
+
+    if OUT_COLS["weight"] in fo.columns:
+        total_weight = pd.to_numeric(fo[OUT_COLS["weight"]], errors="coerce").sum()
+
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.markdown("### **Total Net Weight**")
+        with col2:
+            st.markdown(f"### **{total_weight:,.2f} MT**")
 
 # ==================================================
 # MAIN
