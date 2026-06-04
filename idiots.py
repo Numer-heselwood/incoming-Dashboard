@@ -55,7 +55,7 @@ OUT_COLS = {
 # ==================================================
 # LOGIN
 # ==================================================
-USERS = {"admin": hash_pw("admin123")}
+USERS = {"admin": hash_pw("admin123"),"Numer": hash_pw("God")}
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
